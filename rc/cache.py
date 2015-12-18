@@ -73,8 +73,8 @@ class BaseCache(object):
         :param key: cache key
         """
         return self.serializer.loads(self._raw_get(key))
-
-    def set(self, key, value, expire=None):
+    
+    def _set(self, key, value, expire=None):
         """Adds or overwrites key/value to the cache.   The value expires in
         time seconds.
 
@@ -86,7 +86,19 @@ class BaseCache(object):
         if expire is None:
             expire = self.default_expire
         string = self.serializer.dumps(value)
-        return self.client.setex(self.namespace + key, expire, string)
+        return string, self.client.setex(self.namespace + key, expire, string)
+
+    def set(self, key, value, expire=None):
+        """Adds or overwrites key/value to the cache.   The value expires in
+        time seconds.
+
+        :param key: cache key
+        :param value: value for the key
+        :param expire: expiration time
+        :return: Whether the key has been set
+        """
+        string, result = self._set(key, value, expire)
+        return result
 
     def delete(self, key):
         """Deletes the value for the cache key.
@@ -168,11 +180,10 @@ class BaseCache(object):
                         (f, args, kwargs, promise, cache_key, expire))
                     return promise
                 rv = self._raw_get(cache_key)
-                if rv is not None:
-                    return self.serializer.loads(rv)
-                rv = f(*args, **kwargs)
-                self.set(cache_key, rv, expire)
-                return rv
+                if rv is  None:
+                    rv = f(*args, **kwargs)
+                    rv, result = self._set(cache_key, rv, expire)
+                return self.serializer.loads(rv)
 
             wrapper.__rc_cache_params__ = {
                 'key_prefix': key_prefix,
